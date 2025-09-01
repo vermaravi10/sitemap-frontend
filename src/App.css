@@ -1,0 +1,48 @@
+/* Custom styles for the Canva Board */
+.react-flow__node {
+  cursor: default;
+}
+
+.react-flow__node:active {
+  cursor: default;
+}
+
+.react-flow__handle {
+  background: #6b7280;
+  border: 2px solid #ffffff;
+}
+
+.react-flow__handle:hover {
+  background: #4b5563;
+}
+
+/* Only apply grab cursor to draggable sections */
+.sortable-section {
+  cursor: grab;
+}
+
+.sortable-section:active {
+  cursor: grabbing;
+}
+
+/* Prevent canvas scrolling during drag operations */
+.react-flow__viewport {
+  scroll-behavior: auto;
+}
+
+/* Improve drag visual feedback */
+[data-dnd-kit-sortable-item] {
+  transition: transform 0.2s ease;
+}
+
+[data-dnd-kit-sortable-item][data-dnd-kit-sortable-item-dragging] {
+  z-index: 1000;
+  transform: rotate(2deg);
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.15);
+}
+
+/* Prevent body scrolling during drag */
+body.dragging {
+  overflow: hidden;
+  user-select: none;
+}
