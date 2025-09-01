@@ -17,6 +17,7 @@ export interface RootNode {
   title: string;
   position: { x: number; y: number };
   parent: string;
+  sections: Section[];
 }
 
 export interface BoardState {

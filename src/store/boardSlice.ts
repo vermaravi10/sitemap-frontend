@@ -6,9 +6,10 @@ import type { BoardState, Node, Section } from "../types";
 const initialState: BoardState = {
   root: {
     id: "root",
-    title: "Main Board",
+    title: "Home",
     position: { x: 400, y: 100 },
     parent: "",
+    sections: [],
   },
   nodes: [],
   edges: [],
@@ -19,16 +20,32 @@ const calculateChildPositions = (
   parentX: number,
   parentY: number,
   childCount: number,
-  childIndex: number
+  childIndex: number,
+  parentSectionsCount: number = 0
 ) => {
-  const spacing = 300; // Horizontal spacing between children
-  const verticalOffset = 200; // Vertical distance from parent
-  const totalWidth = (childCount - 1) * spacing;
+  const baseSpacing = 450; // Base horizontal spacing between children
+
+  // Adjust horizontal spacing based on parent's section count
+  const sectionAdjustment = parentSectionsCount * 50; // 50px per section
+  const adjustedSpacing = baseSpacing + sectionAdjustment;
+
+  // Calculate vertical offset based on parent's content height
+  // Each section adds approximately 120px to the node height
+  const sectionHeight = 120; // Height per section
+  const baseNodeHeight = 250; // Base height of a node without sections
+  const parentContentHeight =
+    baseNodeHeight + parentSectionsCount * sectionHeight;
+
+  // Dynamic vertical offset: content height + dynamic buffer (more sections = more buffer)
+  const dynamicBuffer = Math.max(100, parentSectionsCount * 30); // Buffer increases with section count
+  const adjustedVerticalOffset = parentContentHeight + dynamicBuffer;
+
+  const totalWidth = (childCount - 1) * adjustedSpacing;
   const startX = parentX - totalWidth / 2;
 
   return {
-    x: startX + childIndex * spacing,
-    y: parentY + verticalOffset,
+    x: startX + childIndex * adjustedSpacing,
+    y: parentY + adjustedVerticalOffset,
   };
 };
 
@@ -42,12 +59,15 @@ const updateChildPositions = (state: BoardState, parentId: string) => {
 
   if (!parent) return;
 
+  const parentSectionsCount = parent.sections?.length || 0;
+
   children.forEach((child, index) => {
     const newPosition = calculateChildPositions(
       parent.position.x,
       parent.position.y,
       children.length,
-      index
+      index,
+      parentSectionsCount
     );
     child.position = newPosition;
   });
@@ -62,23 +82,24 @@ const boardSlice = createSlice({
       const parent =
         parentId === "root"
           ? state.root
-          : state.nodes.find((n) => n.id === parentId);
+          : state?.nodes?.find((n) => n?.id === parentId);
 
       if (!parent) return;
 
-      const existingChildren = state.nodes.filter(
+      const existingChildren = state?.nodes?.filter(
         (node) => node.parent === parentId
       );
       const newPosition = calculateChildPositions(
         parent.position.x,
         parent.position.y,
         existingChildren.length + 1,
-        existingChildren.length
+        existingChildren.length,
+        parent.sections?.length || 0
       );
 
       const newNode: Node = {
         id: nanoid(),
-        title: `Node ${state.nodes.length + 1}`,
+        title: `Page ${state.nodes.length + 2}`,
         sections: [],
         position: newPosition,
         parent: parentId,
@@ -147,14 +168,29 @@ const boardSlice = createSlice({
         content: string;
       }>
     ) => {
-      const node = state.nodes.find((n) => n.id === action.payload.nodeId);
-      if (node) {
+      const { nodeId, title, content } = action.payload;
+
+      if (nodeId === "root") {
         const newSection: Section = {
           id: nanoid(),
-          title: action.payload.title,
-          content: action.payload.content,
+          title,
+          content,
         };
-        node.sections.push(newSection);
+        state.root.sections.push(newSection);
+        // Update child positions when root sections change
+        updateChildPositions(state, "root");
+      } else {
+        const node = state.nodes.find((n) => n.id === nodeId);
+        if (node) {
+          const newSection: Section = {
+            id: nanoid(),
+            title,
+            content,
+          };
+          node.sections.push(newSection);
+          // Update child positions when parent sections change
+          updateChildPositions(state, nodeId);
+        }
       }
     },
 
@@ -162,11 +198,23 @@ const boardSlice = createSlice({
       state,
       action: PayloadAction<{ nodeId: string; sectionId: string }>
     ) => {
-      const node = state.nodes.find((n) => n.id === action.payload.nodeId);
-      if (node) {
-        node.sections = node.sections.filter(
-          (section) => section.id !== action.payload.sectionId
+      const { nodeId, sectionId } = action.payload;
+
+      if (nodeId === "root") {
+        state.root.sections = state.root.sections.filter(
+          (section) => section.id !== sectionId
         );
+        // Update child positions when root sections change
+        updateChildPositions(state, "root");
+      } else {
+        const node = state.nodes.find((n) => n.id === nodeId);
+        if (node) {
+          node.sections = node.sections.filter(
+            (section) => section.id !== sectionId
+          );
+          // Update child positions when parent sections change
+          updateChildPositions(state, nodeId);
+        }
       }
     },
 
@@ -179,14 +227,26 @@ const boardSlice = createSlice({
         content: string;
       }>
     ) => {
-      const node = state.nodes.find((n) => n.id === action.payload.nodeId);
-      if (node) {
-        const section = node.sections.find(
-          (section) => section.id === action.payload.sectionId
+      const { nodeId, sectionId, title, content } = action.payload;
+
+      if (nodeId === "root") {
+        const section = state.root.sections.find(
+          (section) => section.id === sectionId
         );
         if (section) {
-          section.title = action.payload.title;
-          section.content = action.payload.content;
+          section.title = title;
+          section.content = content;
+        }
+      } else {
+        const node = state.nodes.find((n) => n.id === nodeId);
+        if (node) {
+          const section = node.sections.find(
+            (section) => section.id === sectionId
+          );
+          if (section) {
+            section.title = title;
+            section.content = content;
+          }
         }
       }
     },

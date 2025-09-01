@@ -1,19 +1,18 @@
-import { useCallback, useMemo, useEffect } from "react";
+import type { Connection, Edge, Node, NodeTypes } from "@xyflow/react";
 import {
-  ReactFlow,
-  addEdge,
-  useNodesState,
-  useEdgesState,
   Background,
   Controls,
-  MiniMap,
+  ReactFlow,
+  addEdge,
+  useEdgesState,
+  useNodesState,
 } from "@xyflow/react";
-import type { Node, Edge, Connection, NodeTypes } from "@xyflow/react";
-import { useAppDispatch, useAppSelector } from "../store/hooks";
+import { useCallback, useEffect, useMemo } from "react";
+import { useAppSelector } from "../store/hooks";
 // import { addNode } from "../store/boardSlice";
+import "@xyflow/react/dist/style.css";
 import RootNode from "./RootNode";
 import SectionNode from "./SectionNode";
-import "@xyflow/react/dist/style.css";
 
 const nodeTypes: NodeTypes = {
   root: RootNode,
@@ -21,7 +20,6 @@ const nodeTypes: NodeTypes = {
 };
 
 const CanvaBoard: React.FC = () => {
-  const dispatch = useAppDispatch();
   const { root, nodes, edges } = useAppSelector((state) => state.board);
 
   const reactFlowNodes: Node[] = useMemo(() => {
@@ -79,21 +77,8 @@ const CanvaBoard: React.FC = () => {
     // No-op - nodes are not draggable
   }, []);
 
-  //   const handleAddNode = () => {
-  //     dispatch(addNode({ parentId: "root" }));
-  //   };
-
   return (
     <div className="w-full h-screen bg-gray-50">
-      {/* <div className="absolute top-4 left-4 z-10">
-        <button
-          onClick={handleAddNode}
-          className="bg-blue-500 hover:bg-blue-600 text-white font-medium py-2 px-4 rounded-lg shadow-lg transition-colors"
-        >
-          + Add Node to Root
-        </button>
-      </div> */}
-
       <ReactFlow
         nodes={reactFlowNodesState}
         edges={reactFlowEdgesState}
@@ -108,6 +93,8 @@ const CanvaBoard: React.FC = () => {
         fitView
         attributionPosition="bottom-left"
         className="bg-gray-50"
+        minZoom={0.2}
+        maxZoom={1.5}
       >
         <Background color="#9ca3af" gap={20} />
         <Controls />
