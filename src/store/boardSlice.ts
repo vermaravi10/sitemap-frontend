@@ -259,11 +259,19 @@ const boardSlice = createSlice({
         newIndex: number;
       }>
     ) => {
-      const node = state.nodes.find((n) => n.id === action.payload.nodeId);
-      if (node) {
-        const { oldIndex, newIndex } = action.payload;
-        const [removed] = node.sections.splice(oldIndex, 1);
-        node.sections.splice(newIndex, 0, removed);
+      const { nodeId, oldIndex, newIndex } = action.payload;
+
+      if (nodeId === "root") {
+        const [removed] = state.root.sections.splice(oldIndex, 1);
+        state.root.sections.splice(newIndex, 0, removed);
+        // Update child positions when root sections change
+        updateChildPositions(state, "root");
+      } else {
+        const node = state.nodes.find((n) => n.id === nodeId);
+        if (node) {
+          const [removed] = node.sections.splice(oldIndex, 1);
+          node.sections.splice(newIndex, 0, removed);
+        }
       }
     },
 

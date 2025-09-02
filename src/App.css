@@ -46,3 +46,56 @@ body.dragging {
   overflow: hidden;
   user-select: none;
 }
+
+/* Prevent canvas scrolling during drag */
+body.dragging .react-flow__viewport {
+  pointer-events: none !important;
+}
+
+body.dragging .react-flow__pane {
+  pointer-events: none !important;
+}
+
+body.dragging .react-flow__renderer {
+  pointer-events: none !important;
+}
+
+body.dragging .react-flow__selection {
+  pointer-events: none !important;
+}
+
+/* Additional prevention for all React Flow elements */
+body.dragging .react-flow__node {
+  pointer-events: none !important;
+}
+
+body.dragging .react-flow__edge {
+  pointer-events: none !important;
+}
+
+body.dragging .react-flow__handle {
+  pointer-events: none !important;
+}
+
+/* Prevent wheel and touch events during drag */
+body.dragging {
+  overflow: hidden !important;
+  user-select: none !important;
+  -webkit-user-select: none !important;
+  -moz-user-select: none !important;
+  -ms-user-select: none !important;
+}
+
+/* Completely disable React Flow during drag */
+body.dragging .react-flow {
+  pointer-events: none !important;
+}
+
+body.dragging .react-flow__container {
+  pointer-events: none !important;
+}
+
+/* Prevent any canvas movement */
+body.dragging .react-flow__pane {
+  transform: none !important;
+}

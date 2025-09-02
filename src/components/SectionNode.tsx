@@ -77,8 +77,11 @@ const SortableSection: React.FC<SortableSectionProps> = ({
   return (
     <div
       ref={setNodeRef}
-      style={style}
       className="bg-white border border-gray-200 rounded-md p-3 mb-2 shadow-sm hover:shadow-md transition-shadow"
+      style={{ ...style }} // keep touch from scrolling
+      onPointerDown={(e) => e.stopPropagation()} // bubble phase — OK
+      onMouseDown={(e) => e.stopPropagation()}
+      onTouchStart={(e) => e.stopPropagation()}
     >
       <div className="flex items-center justify-between mb-2">
         {isEditing ? (
@@ -122,11 +125,10 @@ const SortableSection: React.FC<SortableSectionProps> = ({
         <p className="text-gray-600 text-sm">{content}</p>
       )}
 
-      {/* Drag Handle - Made larger and more visible */}
       <div
         {...attributes}
         {...listeners}
-        className="w-full h-4 bg-gray-100 rounded cursor-move hover:bg-gray-200 transition-colors mt-3 flex items-center justify-center"
+        className="rf-nopan w-full h-4 bg-gray-100 rounded cursor-move hover:bg-gray-200 transition-colors mt-3 flex items-center justify-center"
         style={{ touchAction: "none" }}
       >
         <div className="flex space-x-1">
@@ -151,7 +153,9 @@ const SectionNode: React.FC<NodeProps> = ({ id }) => {
   const [showAddForm, setShowAddForm] = useState(false);
 
   const sensors = useSensors(
-    useSensor(PointerSensor),
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: 8 },
+    }),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
     })
@@ -207,6 +211,27 @@ const SectionNode: React.FC<NodeProps> = ({ id }) => {
   const handleDragStart = () => {
     // Add dragging class to body to prevent scrolling
     document.body.classList.add("dragging");
+
+    // Add event listeners to prevent scrolling
+    const preventScroll = (e: Event) => {
+      e.preventDefault();
+      e.stopPropagation();
+      return false;
+    };
+
+    // Prevent wheel, touchmove, and mousemove events
+    document.addEventListener("wheel", preventScroll, {
+      passive: false,
+      capture: true,
+    });
+    document.addEventListener("touchmove", preventScroll, {
+      passive: false,
+      capture: true,
+    });
+    document.addEventListener("mousemove", preventScroll, {
+      passive: false,
+      capture: true,
+    });
   };
 
   const handleDragEnd = (event: DragEndEvent) => {
@@ -214,6 +239,17 @@ const SectionNode: React.FC<NodeProps> = ({ id }) => {
 
     // Remove dragging class from body
     document.body.classList.remove("dragging");
+
+    // Remove event listeners
+    const preventScroll = (e: Event) => {
+      e.preventDefault();
+      e.stopPropagation();
+      return false;
+    };
+
+    document.removeEventListener("wheel", preventScroll, { capture: true });
+    document.removeEventListener("touchmove", preventScroll, { capture: true });
+    document.removeEventListener("mousemove", preventScroll, { capture: true });
 
     if (active.id !== over?.id && over) {
       const oldIndex = node.sections.findIndex(
@@ -253,7 +289,7 @@ const SectionNode: React.FC<NodeProps> = ({ id }) => {
 
   return (
     <>
-      <div className="bg-white border-2 border-gray-300 rounded-lg shadow-lg p-4 min-w-[300px] max-w-[400px]">
+      <div className="bg-gradient-to-r from-[#e1e4e8] to-[#939ca3] border-2 border-gray-300 rounded-lg shadow-lg p-4 min-w-[300px] max-w-[400px]">
         <Handle type="target" position={Position.Top} className="w-3 h-3" />
 
         <div className="flex items-center justify-between mb-4">
@@ -285,11 +321,13 @@ const SectionNode: React.FC<NodeProps> = ({ id }) => {
           </button>
         </div>
 
-        <div className="mb-4">
+        <div className="mb-4 rf-nopan">
           <DndContext
             sensors={sensors}
             collisionDetection={closestCenter}
+            onDragStart={handleDragStart}
             onDragEnd={handleDragEnd}
+            autoScroll={false}
           >
             <SortableContext
               items={node.sections.map((section) => section.id)}

@@ -13,3 +13,8 @@ code {
   font-family: source-code-pro, Menlo, Monaco, Consolas, "Courier New",
     monospace;
 }
+
+.react-flow,
+.react-flow__pane {
+  touch-action: pinch-zoom; /* always allow two-finger zoom */
+}

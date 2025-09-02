@@ -98,6 +98,13 @@ const CanvaBoard: React.FC = () => {
         className="bg-gray-50"
         minZoom={0.2}
         maxZoom={1.5}
+        panOnDrag
+        panOnScroll={false}
+        zoomOnScroll={false}
+        zoomOnPinch
+        selectionOnDrag={false}
+        /* 🔑 any element with this class won’t trigger pane panning */
+        noPanClassName="rf-nopan"
       >
         <Background color="#9ca3af" gap={20} />
         <Controls />

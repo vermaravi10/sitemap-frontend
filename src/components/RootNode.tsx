@@ -1,13 +1,92 @@
 import { useState } from "react";
 import { Handle, Position } from "@xyflow/react";
 import type { NodeProps } from "@xyflow/react";
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
+import type { DragEndEvent } from "@dnd-kit/core";
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { useSortable } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { useAppDispatch, useAppSelector } from "../store/hooks";
 import {
   updateRootTitle,
   addNode,
   addSection,
   removeSection,
+  reorderSections,
 } from "../store/boardSlice";
+
+interface SortableSectionProps {
+  id: string;
+  title: string;
+  content: string;
+  onRemove: () => void;
+}
+
+const SortableSection: React.FC<SortableSectionProps> = ({
+  id,
+  title,
+  content,
+  onRemove,
+}) => {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className="bg-white/90 border border-white/30 rounded-md p-3 shadow-sm"
+    >
+      <div className="flex items-center justify-between mb-2">
+        <h4 className="font-medium text-gray-800">{title}</h4>
+        <button
+          onClick={onRemove}
+          className="text-red-500 hover:text-red-700 text-sm font-medium"
+        >
+          ×
+        </button>
+      </div>
+      <p className="text-gray-600 text-sm">{content}</p>
+
+      {/* Drag Handle */}
+      <div
+        {...attributes}
+        {...listeners}
+        className="rf-nopan w-full h-4 bg-white/30 rounded cursor-move hover:bg-white/50 transition-colors mt-3 flex items-center justify-center"
+        style={{ touchAction: "none" }}
+      >
+        <div className="flex space-x-1">
+          <div className="w-1 h-1 bg-white/60 rounded-full"></div>
+          <div className="w-1 h-1 bg-white/60 rounded-full"></div>
+          <div className="w-1 h-1 bg-white/60 rounded-full"></div>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 const RootNode: React.FC<NodeProps> = () => {
   const dispatch = useAppDispatch();
@@ -17,6 +96,72 @@ const RootNode: React.FC<NodeProps> = () => {
   const [newSectionTitle, setNewSectionTitle] = useState("");
   const [newSectionContent, setNewSectionContent] = useState("");
   const [showAddForm, setShowAddForm] = useState(false);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: 8 },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
+  const handleDragStart = () => {
+    // Prevent canvas scrolling during drag
+    document.body.classList.add("dragging");
+
+    // Add event listeners to prevent scrolling
+    const preventScroll = (e: Event) => {
+      e.preventDefault();
+      e.stopPropagation();
+      return false;
+    };
+
+    // Prevent wheel, touchmove, and mousemove events
+    document.addEventListener("wheel", preventScroll, {
+      passive: false,
+      capture: true,
+    });
+    document.addEventListener("touchmove", preventScroll, {
+      passive: false,
+      capture: true,
+    });
+    document.addEventListener("mousemove", preventScroll, {
+      passive: false,
+      capture: true,
+    });
+  };
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    // Remove dragging class and allow canvas scrolling
+    document.body.classList.remove("dragging");
+
+    // Remove event listeners
+    const preventScroll = (e: Event) => {
+      e.preventDefault();
+      e.stopPropagation();
+      return false;
+    };
+
+    document.removeEventListener("wheel", preventScroll, { capture: true });
+    document.removeEventListener("touchmove", preventScroll, { capture: true });
+    document.removeEventListener("mousemove", preventScroll, { capture: true });
+
+    const { active, over } = event;
+
+    if (active.id !== over?.id && over) {
+      const oldIndex = root.sections.findIndex(
+        (section) => section.id === active.id
+      );
+      const newIndex = root.sections.findIndex(
+        (section) => section.id === over.id
+      );
+
+      if (oldIndex !== -1 && newIndex !== -1) {
+        dispatch(reorderSections({ nodeId: "root", oldIndex, newIndex }));
+      }
+    }
+  };
 
   const handleTitleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setTitle(e.target.value);
@@ -72,7 +217,7 @@ const RootNode: React.FC<NodeProps> = () => {
 
   return (
     <>
-      <div className="bg-gradient-to-r from-blue-500 to-purple-600 rounded-lg shadow-lg p-4 min-w-[300px] max-w-[400px]">
+      <div className="bg-gradient-to-r from-[#e1e4e8] to-[#d4d4d4] rounded-lg shadow-lg p-4 min-w-[300px] max-w-[400px]">
         <div className="text-center mb-4">
           {isEditing ? (
             <input
@@ -95,24 +240,28 @@ const RootNode: React.FC<NodeProps> = () => {
         </div>
 
         {/* Sections */}
-        <div className="mb-4 space-y-2">
-          {root.sections?.map((section) => (
-            <div
-              key={section.id}
-              className="bg-white/90 border border-white/30 rounded-md p-3 shadow-sm"
+        <div className="mb-4 space-y-2 rf-nopan">
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragStart={handleDragStart}
+            onDragEnd={handleDragEnd}
+          >
+            <SortableContext
+              items={root.sections?.map((section) => section.id) || []}
+              strategy={verticalListSortingStrategy}
             >
-              <div className="flex items-center justify-between mb-2">
-                <h4 className="font-medium text-gray-800">{section.title}</h4>
-                <button
-                  onClick={() => handleRemoveSection(section.id)}
-                  className="text-red-500 hover:text-red-700 text-sm font-medium"
-                >
-                  ×
-                </button>
-              </div>
-              <p className="text-gray-600 text-sm">{section.content}</p>
-            </div>
-          ))}
+              {root.sections?.map((section) => (
+                <SortableSection
+                  key={section.id}
+                  id={section.id}
+                  title={section.title}
+                  content={section.content}
+                  onRemove={() => handleRemoveSection(section.id)}
+                />
+              ))}
+            </SortableContext>
+          </DndContext>
         </div>
 
         {showAddForm ? (
