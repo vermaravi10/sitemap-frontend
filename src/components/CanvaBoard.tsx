@@ -21,6 +21,9 @@ const nodeTypes: NodeTypes = {
 
 const CanvaBoard: React.FC = () => {
   const { root, nodes, edges } = useAppSelector((state) => state.board);
+  console.log("🚀 ~ CanvaBoard ~ root:", root);
+  console.log("🚀 ~ CanvaBoard ~ nodes:", nodes);
+  console.log("🚀 ~ CanvaBoard ~ edges:", edges);
 
   const reactFlowNodes: Node[] = useMemo(() => {
     const allNodes: Node[] = [
