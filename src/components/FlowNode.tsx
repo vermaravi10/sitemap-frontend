@@ -1,6 +1,4 @@
-// src/components/FlowNode.tsx
-import { Handle, Position } from "@xyflow/react";
-import type { NodeProps } from "@xyflow/react";
+import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { useState } from "react";
 import {
   DndContext,
@@ -9,8 +7,8 @@ import {
   PointerSensor,
   useSensor,
   useSensors,
+  type DragEndEvent,
 } from "@dnd-kit/core";
-import type { DragEndEvent } from "@dnd-kit/core";
 import {
   SortableContext,
   sortableKeyboardCoordinates,
@@ -18,19 +16,33 @@ import {
 } from "@dnd-kit/sortable";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { useAppDispatch } from "../store/hooks";
-import {
-  updateNodeTitle,
-  addSection,
-  removeSection,
-  updateSection,
-  reorderSections,
-  removeNode,
-  addNode,
-} from "../store/boardSlice";
-import type { FlowNode } from "../types";
+import type { FlowNode as DNode } from "../types";
 
-// ---------- Sortable Section ----------
+type Handlers = {
+  onUpdateTitle: (id: string, title: string) => void;
+  onAddSection: (nodeId: string, title: string, content: string) => void;
+  onRemoveSection: (nodeId: string, sectionId: string) => void;
+  onUpdateSection: (
+    nodeId: string,
+    sectionId: string,
+    title: string,
+    content: string
+  ) => void;
+  onReorderSections: (
+    nodeId: string,
+    oldIndex: number,
+    newIndex: number
+  ) => void;
+  onRemoveNode: (id: string) => void;
+  onAddChildNode: (parentId: string) => void;
+};
+
+type FlowNodeData = {
+  node: DNode;
+} & Handlers;
+
+/* -------------------- SortableSection -------------------- */
+
 interface SortableSectionProps {
   id: string;
   title: string;
@@ -55,9 +67,16 @@ const SortableSection: React.FC<SortableSectionProps> = ({
     isDragging,
   } = useSortable({ id });
 
-  const [isEditing, setIsEditing] = useState(false);
+  // separate edit states
+  const [isEditingTitle, setIsEditingTitle] = useState(false);
+  const [isEditingContent, setIsEditingContent] = useState(false);
+
   const [editTitle, setEditTitle] = useState(title);
   const [editContent, setEditContent] = useState(content);
+
+  // keep local state in sync if parent updates (rare but safe)
+  if (title !== editTitle && !isEditingTitle) setEditTitle(title);
+  if (content !== editContent && !isEditingContent) setEditContent(content);
 
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
@@ -65,11 +84,24 @@ const SortableSection: React.FC<SortableSectionProps> = ({
     opacity: isDragging ? 0.5 : 1,
   };
 
-  const handleSave = () => {
-    if (editTitle.trim() !== title || editContent.trim() !== content) {
-      onUpdate(editTitle.trim(), editContent.trim());
-    }
-    setIsEditing(false);
+  const saveAndExitTitle = () => {
+    const t = editTitle.trim();
+    if (t !== title) onUpdate(t, editContent);
+    setIsEditingTitle(false);
+  };
+  const cancelTitle = () => {
+    setEditTitle(title);
+    setIsEditingTitle(false);
+  };
+
+  const saveAndExitContent = () => {
+    const c = editContent.trim();
+    if (c !== content) onUpdate(editTitle, c);
+    setIsEditingContent(false);
+  };
+  const cancelContent = () => {
+    setEditContent(content);
+    setIsEditingContent(false);
   };
 
   return (
@@ -82,23 +114,27 @@ const SortableSection: React.FC<SortableSectionProps> = ({
       onTouchStart={(e) => e.stopPropagation()}
     >
       <div className="flex items-center justify-between mb-2">
-        {isEditing ? (
+        {isEditingTitle ? (
           <input
-            type="text"
             value={editTitle}
             onChange={(e) => setEditTitle(e.target.value)}
-            onBlur={handleSave}
+            onBlur={saveAndExitTitle}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") saveAndExitTitle();
+              if (e.key === "Escape") cancelTitle();
+            }}
             className="flex-1 bg-gray-50 border border-gray-300 rounded px-2 py-1 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500"
             autoFocus
           />
         ) : (
           <h4
             className="flex-1 font-medium text-gray-800 cursor-pointer hover:bg-gray-50 px-2 py-1 rounded"
-            onClick={() => setIsEditing(true)}
+            onClick={() => setIsEditingTitle(true)}
           >
             {title}
           </h4>
         )}
+
         <button
           onClick={(e) => {
             e.stopPropagation();
@@ -110,16 +146,27 @@ const SortableSection: React.FC<SortableSectionProps> = ({
         </button>
       </div>
 
-      {isEditing ? (
+      {isEditingContent ? (
         <textarea
           value={editContent}
           onChange={(e) => setEditContent(e.target.value)}
-          onBlur={handleSave}
+          onBlur={saveAndExitContent}
+          onKeyDown={(e) => {
+            if ((e.ctrlKey || e.metaKey) && e.key === "Enter")
+              saveAndExitContent();
+            if (e.key === "Escape") cancelContent();
+          }}
           className="w-full bg-gray-50 border border-gray-300 rounded px-2 py-1 text-sm text-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
           rows={2}
+          autoFocus
         />
       ) : (
-        <p className="text-gray-600 text-sm">{content}</p>
+        <p
+          className="text-gray-600 text-sm cursor-pointer hover:bg-gray-50 px-2 py-1 rounded"
+          onClick={() => setIsEditingContent(true)}
+        >
+          {content}
+        </p>
       )}
 
       <div
@@ -129,18 +176,19 @@ const SortableSection: React.FC<SortableSectionProps> = ({
         style={{ touchAction: "none" }}
       >
         <div className="flex space-x-1">
-          <div className="w-1 h-1 bg-gray-400 rounded-full"></div>
-          <div className="w-1 h-1 bg-gray-400 rounded-full"></div>
-          <div className="w-1 h-1 bg-gray-400 rounded-full"></div>
+          <div className="w-1 h-1 bg-gray-400 rounded-full" />
+          <div className="w-1 h-1 bg-gray-400 rounded-full" />
+          <div className="w-1 h-1 bg-gray-400 rounded-full" />
         </div>
       </div>
     </div>
   );
 };
 
-const FlowNodeComponent: React.FC<NodeProps> = ({ id, data }) => {
-  const dispatch = useAppDispatch();
-  const node = data as FlowNode;
+/* -------------------- FlowNode (container) -------------------- */
+
+const FlowNodeComponent: React.FC<NodeProps> = ({ data }) => {
+  const { node, ...handlers } = data as FlowNodeData;
 
   const [isEditing, setIsEditing] = useState(false);
   const [title, setTitle] = useState(node.title);
@@ -153,36 +201,7 @@ const FlowNodeComponent: React.FC<NodeProps> = ({ id, data }) => {
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 
-  if (!node) return null;
   const isRoot = node.parent === "";
-
-  const handleTitleBlur = () => {
-    if (title.trim() !== node.title) {
-      dispatch(updateNodeTitle({ id: node.id, title: title.trim() }));
-    }
-    setIsEditing(false);
-  };
-
-  const handleAddSection = () => {
-    if (newSectionTitle?.trim() && newSectionContent?.trim()) {
-      dispatch(
-        addSection({
-          nodeId: node.id,
-          title: newSectionTitle.trim(),
-          content: newSectionContent.trim(),
-        })
-      );
-      setNewSectionTitle("");
-      setNewSectionContent("");
-      setShowAddForm(false);
-    }
-  };
-
-  const handleRemoveNode = () => {
-    if (!isRoot && confirm("Remove this node and all its children?")) {
-      dispatch(removeNode(node.id));
-    }
-  };
 
   const onSectionsDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
@@ -192,7 +211,7 @@ const FlowNodeComponent: React.FC<NodeProps> = ({ id, data }) => {
       );
       const newIndex = node.sections.findIndex((s) => s.id === String(over.id));
       if (oldIndex !== -1 && newIndex !== -1) {
-        dispatch(reorderSections({ nodeId: node.id, oldIndex, newIndex }));
+        handlers.onReorderSections(node.id, oldIndex, newIndex);
       }
     }
   };
@@ -212,10 +231,25 @@ const FlowNodeComponent: React.FC<NodeProps> = ({ id, data }) => {
           <div className="flex-1">
             {isEditing ? (
               <input
-                type="text"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                onBlur={handleTitleBlur}
+                onBlur={() => {
+                  if (title.trim() !== node.title) {
+                    handlers.onUpdateTitle(node.id, title.trim());
+                  }
+                  setIsEditing(false);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    const t = title.trim();
+                    if (t !== node.title) handlers.onUpdateTitle(node.id, t);
+                    setIsEditing(false);
+                  }
+                  if (e.key === "Escape") {
+                    setTitle(node.title);
+                    setIsEditing(false);
+                  }
+                }}
                 className="bg-gray-50 border border-gray-300 rounded px-2 py-1 text-lg font-semibold w-full focus:outline-none focus:ring-2 focus:ring-blue-500"
                 autoFocus
               />
@@ -230,7 +264,7 @@ const FlowNodeComponent: React.FC<NodeProps> = ({ id, data }) => {
           </div>
           {!isRoot && (
             <button
-              onClick={handleRemoveNode}
+              onClick={() => handlers.onRemoveNode(node.id)}
               className="ml-2 text-red-500 hover:text-red-700 text-lg font-bold px-2 py-1 rounded hover:bg-red-50"
             >
               ×
@@ -238,7 +272,6 @@ const FlowNodeComponent: React.FC<NodeProps> = ({ id, data }) => {
           )}
         </div>
 
-        {/* Sections */}
         <div className="mb-4 rf-nopan">
           <DndContext
             sensors={sensors}
@@ -255,20 +288,9 @@ const FlowNodeComponent: React.FC<NodeProps> = ({ id, data }) => {
                   id={s.id}
                   title={s.title}
                   content={s.content}
-                  onRemove={() =>
-                    dispatch(
-                      removeSection({ nodeId: node.id, sectionId: s.id })
-                    )
-                  }
+                  onRemove={() => handlers.onRemoveSection(node.id, s.id)}
                   onUpdate={(t, c) =>
-                    dispatch(
-                      updateSection({
-                        nodeId: node.id,
-                        sectionId: s.id,
-                        title: t,
-                        content: c,
-                      })
-                    )
+                    handlers.onUpdateSection(node.id, s.id, t, c)
                   }
                 />
               ))}
@@ -279,7 +301,6 @@ const FlowNodeComponent: React.FC<NodeProps> = ({ id, data }) => {
         {showAddForm ? (
           <div className="border border-gray-200 rounded-md p-3 mb-4 bg-gray-50">
             <input
-              type="text"
               placeholder="Section title"
               value={newSectionTitle}
               onChange={(e) => setNewSectionTitle(e.target.value)}
@@ -294,7 +315,16 @@ const FlowNodeComponent: React.FC<NodeProps> = ({ id, data }) => {
             />
             <div className="flex gap-2">
               <button
-                onClick={handleAddSection}
+                onClick={() => {
+                  const t = newSectionTitle.trim();
+                  const c = newSectionContent.trim();
+                  if (t && c) {
+                    handlers.onAddSection(node.id, t, c);
+                    setNewSectionTitle("");
+                    setNewSectionContent("");
+                    setShowAddForm(false);
+                  }
+                }}
                 className="px-3 py-1 bg-blue-500 text-white rounded-md hover:bg-blue-600 text-sm"
               >
                 Add
@@ -321,11 +351,8 @@ const FlowNodeComponent: React.FC<NodeProps> = ({ id, data }) => {
         <Handle type="source" position={Position.Bottom} className="w-3 h-3" />
       </div>
 
-      {/* Add child button */}
       <div className="flex justify-start">
-        <button onClick={() => dispatch(addNode({ parentId: node.id }))}>
-          ⊕
-        </button>
+        <button onClick={() => handlers.onAddChildNode(node.id)}>⊕</button>
       </div>
     </>
   );

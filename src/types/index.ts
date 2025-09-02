@@ -24,10 +24,3 @@ export type Project = {
   nodes: FlowNode[];
   edges: FlowEdge[];
 };
-
-export type BoardState = {
-  projectId: string | null;
-  title: string;
-  nodes: FlowNode[];
-  edges: FlowEdge[];
-};
