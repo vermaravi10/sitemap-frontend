@@ -1,14 +1,17 @@
 import { PersistGate } from "redux-persist/integration/react";
-import { persistor } from "./store/store";
+import { persistor, store } from "./store/store";
 
 import "./App.css";
 import CanvaBoard from "./components/CanvaBoard";
+import { Provider } from "react-redux";
 
 function App() {
   return (
-    <PersistGate loading={null} persistor={persistor}>
-      <CanvaBoard />
-    </PersistGate>
+    <Provider store={store}>
+      <PersistGate loading={null} persistor={persistor}>
+        <CanvaBoard />
+      </PersistGate>
+    </Provider>
   );
 }
 

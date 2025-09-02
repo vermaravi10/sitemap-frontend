@@ -6,7 +6,11 @@ import boardReducer from "./boardSlice";
 const persistConfig = {
   key: "canva-board",
   storage,
-  whitelist: ["board"],
+
+  serialize: true,
+  deserialize: true,
+  timeout: 0,
+  debug: true,
 };
 
 const persistedBoardReducer = persistReducer(persistConfig, boardReducer);
@@ -18,9 +22,20 @@ export const store = configureStore({
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({
       serializableCheck: {
-        ignoredActions: ["persist/PERSIST", "persist/REHYDRATE"],
+        ignoredActions: [
+          "persist/PERSIST",
+          "persist/REHYDRATE",
+          "persist/PAUSE",
+          "persist/PURGE",
+          "persist/REGISTER",
+        ],
+        ignoredPaths: ["_persist"],
       },
     }),
+});
+
+store.subscribe(() => {
+  console.log("Store state changed:", store.getState());
 });
 
 export const persistor = persistStore(store);
