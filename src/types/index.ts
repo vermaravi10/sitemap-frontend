@@ -1,31 +1,33 @@
-export interface Section {
+export type Section = {
   id: string;
   title: string;
   content: string;
-}
+};
 
-export interface Node {
-  id: string;
-  title: string;
-  sections: Section[];
-  position: { x: number; y: number };
-  parent: string;
-}
-
-export interface RootNode {
-  id: string;
+export type FlowNode = {
+  id: string; // includes "root"
   title: string;
   position: { x: number; y: number };
-  parent: string;
+  parent: string; // "" for root
   sections: Section[];
-}
+};
 
-export interface BoardState {
-  root: RootNode;
-  nodes: Node[];
-  edges: Array<{
-    id: string;
-    source: string;
-    target: string;
-  }>;
-}
+export type FlowEdge = {
+  id: string;
+  source: string;
+  target: string;
+};
+
+export type Project = {
+  _id: string;
+  title: string;
+  nodes: FlowNode[];
+  edges: FlowEdge[];
+};
+
+export type BoardState = {
+  projectId: string | null;
+  title: string;
+  nodes: FlowNode[];
+  edges: FlowEdge[];
+};

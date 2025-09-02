@@ -1,6 +1,7 @@
-import { useState } from "react";
+// src/components/FlowNode.tsx
 import { Handle, Position } from "@xyflow/react";
 import type { NodeProps } from "@xyflow/react";
+import { useState } from "react";
 import {
   DndContext,
   closestCenter,
@@ -17,7 +18,7 @@ import {
 } from "@dnd-kit/sortable";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { useAppDispatch, useAppSelector } from "../store/hooks";
+import { useAppDispatch } from "../store/hooks";
 import {
   updateNodeTitle,
   addSection,
@@ -27,7 +28,9 @@ import {
   removeNode,
   addNode,
 } from "../store/boardSlice";
+import type { FlowNode } from "../types";
 
+// ---------- Sortable Section ----------
 interface SortableSectionProps {
   id: string;
   title: string;
@@ -51,11 +54,12 @@ const SortableSection: React.FC<SortableSectionProps> = ({
     transition,
     isDragging,
   } = useSortable({ id });
+
   const [isEditing, setIsEditing] = useState(false);
   const [editTitle, setEditTitle] = useState(title);
   const [editContent, setEditContent] = useState(content);
 
-  const style = {
+  const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
     transition,
     opacity: isDragging ? 0.5 : 1,
@@ -68,18 +72,12 @@ const SortableSection: React.FC<SortableSectionProps> = ({
     setIsEditing(false);
   };
 
-  const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter") {
-      handleSave();
-    }
-  };
-
   return (
     <div
       ref={setNodeRef}
+      style={style}
       className="bg-white border border-gray-200 rounded-md p-3 mb-2 shadow-sm hover:shadow-md transition-shadow"
-      style={{ ...style }} // keep touch from scrolling
-      onPointerDown={(e) => e.stopPropagation()} // bubble phase — OK
+      onPointerDown={(e) => e.stopPropagation()}
       onMouseDown={(e) => e.stopPropagation()}
       onTouchStart={(e) => e.stopPropagation()}
     >
@@ -90,7 +88,6 @@ const SortableSection: React.FC<SortableSectionProps> = ({
             value={editTitle}
             onChange={(e) => setEditTitle(e.target.value)}
             onBlur={handleSave}
-            onKeyPress={handleKeyPress}
             className="flex-1 bg-gray-50 border border-gray-300 rounded px-2 py-1 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500"
             autoFocus
           />
@@ -141,31 +138,23 @@ const SortableSection: React.FC<SortableSectionProps> = ({
   );
 };
 
-const SectionNode: React.FC<NodeProps> = ({ id }) => {
+const FlowNodeComponent: React.FC<NodeProps> = ({ id, data }) => {
   const dispatch = useAppDispatch();
-  const node = useAppSelector((state) =>
-    state.board.nodes.find((n) => n.id === id)
-  );
+  const node = data as FlowNode;
+
   const [isEditing, setIsEditing] = useState(false);
-  const [title, setTitle] = useState(node?.title || "");
+  const [title, setTitle] = useState(node.title);
   const [newSectionTitle, setNewSectionTitle] = useState("");
   const [newSectionContent, setNewSectionContent] = useState("");
   const [showAddForm, setShowAddForm] = useState(false);
 
   const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: { distance: 8 },
-    }),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    })
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 
   if (!node) return null;
-
-  const handleTitleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setTitle(e.target.value);
-  };
+  const isRoot = node.parent === "";
 
   const handleTitleBlur = () => {
     if (title.trim() !== node.title) {
@@ -174,15 +163,8 @@ const SectionNode: React.FC<NodeProps> = ({ id }) => {
     setIsEditing(false);
   };
 
-  const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter") {
-      handleTitleBlur();
-    }
-  };
-
-  const handleAddSection = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (newSectionTitle.trim() && newSectionContent.trim()) {
+  const handleAddSection = () => {
+    if (newSectionTitle?.trim() && newSectionContent?.trim()) {
       dispatch(
         addSection({
           nodeId: node.id,
@@ -196,101 +178,35 @@ const SectionNode: React.FC<NodeProps> = ({ id }) => {
     }
   };
 
-  const handleRemoveSection = (sectionId: string) => {
-    dispatch(removeSection({ nodeId: node.id, sectionId }));
+  const handleRemoveNode = () => {
+    if (!isRoot && confirm("Remove this node and all its children?")) {
+      dispatch(removeNode(node.id));
+    }
   };
 
-  const handleUpdateSection = (
-    sectionId: string,
-    title: string,
-    content: string
-  ) => {
-    dispatch(updateSection({ nodeId: node.id, sectionId, title, content }));
-  };
-
-  const handleDragStart = () => {
-    // Add dragging class to body to prevent scrolling
-    document.body.classList.add("dragging");
-
-    // Add event listeners to prevent scrolling
-    const preventScroll = (e: Event) => {
-      e.preventDefault();
-      e.stopPropagation();
-      return false;
-    };
-
-    // Prevent wheel, touchmove, and mousemove events
-    document.addEventListener("wheel", preventScroll, {
-      passive: false,
-      capture: true,
-    });
-    document.addEventListener("touchmove", preventScroll, {
-      passive: false,
-      capture: true,
-    });
-    document.addEventListener("mousemove", preventScroll, {
-      passive: false,
-      capture: true,
-    });
-  };
-
-  const handleDragEnd = (event: DragEndEvent) => {
+  const onSectionsDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
-
-    // Remove dragging class from body
-    document.body.classList.remove("dragging");
-
-    // Remove event listeners
-    const preventScroll = (e: Event) => {
-      e.preventDefault();
-      e.stopPropagation();
-      return false;
-    };
-
-    document.removeEventListener("wheel", preventScroll, { capture: true });
-    document.removeEventListener("touchmove", preventScroll, { capture: true });
-    document.removeEventListener("mousemove", preventScroll, { capture: true });
-
     if (active.id !== over?.id && over) {
       const oldIndex = node.sections.findIndex(
-        (section) => section.id === active.id
+        (s) => s.id === String(active.id)
       );
-      const newIndex = node.sections.findIndex(
-        (section) => section.id === over.id
-      );
-
+      const newIndex = node.sections.findIndex((s) => s.id === String(over.id));
       if (oldIndex !== -1 && newIndex !== -1) {
         dispatch(reorderSections({ nodeId: node.id, oldIndex, newIndex }));
       }
     }
   };
 
-  const handleRemoveNode = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (confirm("Are you sure you want to remove this node?")) {
-      dispatch(removeNode(node.id));
-    }
-  };
-
-  const handleAddChildNode = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    dispatch(addNode({ parentId: node.id }));
-  };
-
-  const handleShowAddForm = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    setShowAddForm(true);
-  };
-
-  const handleCancelAddForm = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    setShowAddForm(false);
-  };
-
   return (
     <>
-      <div className="bg-gradient-to-r from-[#e1e4e8] to-[#939ca3] border-2 border-gray-300 rounded-lg shadow-lg p-4 min-w-[300px] max-w-[400px]">
-        <Handle type="target" position={Position.Top} className="w-3 h-3" />
+      <div
+        className={`bg-gradient-to-r ${
+          isRoot ? "from-[#e1e4e8] to-[#d4d4d4]" : "from-[#e1e4e8] to-[#939ca3]"
+        } border-2 border-gray-300 rounded-lg shadow-lg p-4 min-w-[300px] max-w-[400px]`}
+      >
+        {!isRoot && (
+          <Handle type="target" position={Position.Top} className="w-3 h-3" />
+        )}
 
         <div className="flex items-center justify-between mb-4">
           <div className="flex-1">
@@ -298,9 +214,8 @@ const SectionNode: React.FC<NodeProps> = ({ id }) => {
               <input
                 type="text"
                 value={title}
-                onChange={handleTitleChange}
+                onChange={(e) => setTitle(e.target.value)}
                 onBlur={handleTitleBlur}
-                onKeyPress={handleKeyPress}
                 className="bg-gray-50 border border-gray-300 rounded px-2 py-1 text-lg font-semibold w-full focus:outline-none focus:ring-2 focus:ring-blue-500"
                 autoFocus
               />
@@ -313,35 +228,47 @@ const SectionNode: React.FC<NodeProps> = ({ id }) => {
               </h3>
             )}
           </div>
-          <button
-            onClick={handleRemoveNode}
-            className="ml-2 text-red-500 hover:text-red-700 text-lg font-bold px-2 py-1 rounded hover:bg-red-50"
-          >
-            ×
-          </button>
+          {!isRoot && (
+            <button
+              onClick={handleRemoveNode}
+              className="ml-2 text-red-500 hover:text-red-700 text-lg font-bold px-2 py-1 rounded hover:bg-red-50"
+            >
+              ×
+            </button>
+          )}
         </div>
 
+        {/* Sections */}
         <div className="mb-4 rf-nopan">
           <DndContext
             sensors={sensors}
             collisionDetection={closestCenter}
-            onDragStart={handleDragStart}
-            onDragEnd={handleDragEnd}
-            autoScroll={false}
+            onDragEnd={onSectionsDragEnd}
           >
             <SortableContext
-              items={node.sections.map((section) => section.id)}
+              items={node.sections.map((s) => s.id)}
               strategy={verticalListSortingStrategy}
             >
-              {node.sections.map((section) => (
+              {node.sections.map((s) => (
                 <SortableSection
-                  key={section.id}
-                  id={section.id}
-                  title={section.title}
-                  content={section.content}
-                  onRemove={() => handleRemoveSection(section.id)}
-                  onUpdate={(title, content) =>
-                    handleUpdateSection(section.id, title, content)
+                  key={s.id}
+                  id={s.id}
+                  title={s.title}
+                  content={s.content}
+                  onRemove={() =>
+                    dispatch(
+                      removeSection({ nodeId: node.id, sectionId: s.id })
+                    )
+                  }
+                  onUpdate={(t, c) =>
+                    dispatch(
+                      updateSection({
+                        nodeId: node.id,
+                        sectionId: s.id,
+                        title: t,
+                        content: c,
+                      })
+                    )
                   }
                 />
               ))}
@@ -373,7 +300,7 @@ const SectionNode: React.FC<NodeProps> = ({ id }) => {
                 Add
               </button>
               <button
-                onClick={handleCancelAddForm}
+                onClick={() => setShowAddForm(false)}
                 className="px-3 py-1 bg-gray-500 text-white rounded-md hover:bg-gray-600 text-sm"
               >
                 Cancel
@@ -381,9 +308,9 @@ const SectionNode: React.FC<NodeProps> = ({ id }) => {
             </div>
           </div>
         ) : (
-          <div className=" flex justify-center space-y-2">
+          <div className="flex justify-center space-y-2">
             <button
-              onClick={handleShowAddForm}
+              onClick={() => setShowAddForm(true)}
               className="w-1/2 py-2 border-2 border-dashed border-gray-300 rounded-md text-gray-500 hover:border-gray-400 hover:text-gray-600 transition-colors"
             >
               + Add Section
@@ -393,11 +320,10 @@ const SectionNode: React.FC<NodeProps> = ({ id }) => {
 
         <Handle type="source" position={Position.Bottom} className="w-3 h-3" />
       </div>
+
+      {/* Add child button */}
       <div className="flex justify-start">
-        <button
-          onClick={handleAddChildNode}
-          //   className="w-1/3 my-2 py-2 border-2 border-dashed border-blue-300 rounded-md text-blue-500 hover:border-blue-400 hover:text-blue-600 transition-colors"
-        >
+        <button onClick={() => dispatch(addNode({ parentId: node.id }))}>
           ⊕
         </button>
       </div>
@@ -405,4 +331,4 @@ const SectionNode: React.FC<NodeProps> = ({ id }) => {
   );
 };
 
-export default SectionNode;
+export default FlowNodeComponent;

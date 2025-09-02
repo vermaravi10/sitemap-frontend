@@ -1,224 +1,161 @@
 import { createSlice } from "@reduxjs/toolkit";
 import type { PayloadAction } from "@reduxjs/toolkit";
 import { nanoid } from "nanoid";
-import type { BoardState, Node, Section } from "../types";
+import type {
+  BoardState,
+  FlowNode,
+  Section,
+  Project,
+  FlowEdge,
+} from "../types";
 
 const initialState: BoardState = {
-  root: {
-    id: "root",
-    title: "Home",
-    position: { x: 400, y: 100 },
-    parent: "",
-    sections: [],
-  },
-  nodes: [],
+  projectId: null,
+  title: "Untitled Project",
+  nodes: [
+    {
+      id: "root",
+      title: "Home",
+      position: { x: 400, y: 100 },
+      parent: "",
+      sections: [],
+    },
+  ],
   edges: [],
 };
 
-// Helper function to calculate child positions
-const calculateChildPositions = (
-  parentX: number,
-  parentY: number,
-  childCount: number,
-  childIndex: number,
-  parentSectionsCount: number = 0
-) => {
-  const baseSpacing = 450; // Base horizontal spacing between children
+// helpers...
+const findNode = (nodes: FlowNode[], id: string) =>
+  nodes.find((n) => n.id === id);
+const childrenOf = (nodes: FlowNode[], parentId: string) =>
+  nodes.filter((n) => n.parent === parentId);
 
-  // Adjust horizontal spacing based on parent's section count
-  const sectionAdjustment = parentSectionsCount * 50; // 50px per section
+const calculateChildPositions = (
+  parent: FlowNode,
+  childCount: number,
+  childIndex: number
+) => {
+  const parentSectionsCount = parent.sections?.length || 0;
+  const baseSpacing = 450;
+  const sectionAdjustment = parentSectionsCount * 50;
   const adjustedSpacing = baseSpacing + sectionAdjustment;
 
-  // Calculate vertical offset based on parent's content height
-  // Each section adds approximately 120px to the node height
-  const sectionHeight = 120; // Height per section
-  const baseNodeHeight = 250; // Base height of a node without sections
-  const parentContentHeight =
-    baseNodeHeight + parentSectionsCount * sectionHeight;
-
-  // Dynamic vertical offset: content height + dynamic buffer (more sections = more buffer)
-  const dynamicBuffer = Math.max(100, parentSectionsCount * 30); // Buffer increases with section count
-  const adjustedVerticalOffset = parentContentHeight + dynamicBuffer;
+  const sectionHeight = 120;
+  const baseNodeHeight = 250;
+  const dynamicBuffer = Math.max(100, parentSectionsCount * 30);
+  const adjustedVerticalOffset =
+    baseNodeHeight + parentSectionsCount * sectionHeight + dynamicBuffer;
 
   const totalWidth = (childCount - 1) * adjustedSpacing;
-  const startX = parentX - totalWidth / 2;
+  const startX = parent.position.x - totalWidth / 2;
 
   return {
     x: startX + childIndex * adjustedSpacing,
-    y: parentY + adjustedVerticalOffset,
+    y: parent.position.y + adjustedVerticalOffset,
   };
 };
 
-// Helper function to update all child positions when a parent moves
-const updateChildPositions = (state: BoardState, parentId: string) => {
-  const children = state.nodes.filter((node) => node.parent === parentId);
-  const parent =
-    parentId === "root"
-      ? state.root
-      : state.nodes.find((n) => n.id === parentId);
-
+const relayoutChildren = (nodes: FlowNode[], parentId: string) => {
+  const parent = findNode(nodes, parentId);
   if (!parent) return;
-
-  const parentSectionsCount = parent.sections?.length || 0;
-
-  children.forEach((child, index) => {
-    const newPosition = calculateChildPositions(
-      parent.position.x,
-      parent.position.y,
-      children.length,
-      index,
-      parentSectionsCount
-    );
-    child.position = newPosition;
+  const kids = childrenOf(nodes, parentId);
+  kids.forEach((kid, index) => {
+    kid.position = calculateChildPositions(parent, kids.length, index);
   });
 };
 
-const boardSlice = createSlice({
+export const boardSlice = createSlice({
   name: "board",
   initialState,
   reducers: {
-    addNode: (state, action: PayloadAction<{ parentId: string }>) => {
-      const parentId = action.payload.parentId;
-      const parent =
-        parentId === "root"
-          ? state.root
-          : state?.nodes?.find((n) => n?.id === parentId);
+    setProjectFromServer(state, action: PayloadAction<Project>) {
+      const p = action.payload;
+      state.projectId = p._id;
+      state.title = p.title;
+      state.nodes = p.nodes;
+      state.edges = p.edges as FlowEdge[];
+    },
 
+    updateProjectTitle(state, action: PayloadAction<string>) {
+      state.title = action.payload;
+    },
+
+    addNode(state, action: PayloadAction<{ parentId: string }>) {
+      const parentId = action.payload.parentId;
+      const parent = findNode(state.nodes, parentId);
       if (!parent) return;
 
-      const existingChildren = state?.nodes?.filter(
-        (node) => node.parent === parentId
-      );
-      const newPosition = calculateChildPositions(
-        parent.position.x,
-        parent.position.y,
-        existingChildren.length + 1,
-        existingChildren.length,
-        parent.sections?.length || 0
+      const siblings = childrenOf(state.nodes, parentId);
+      const pos = calculateChildPositions(
+        parent,
+        siblings.length + 1,
+        siblings.length
       );
 
-      const newNode: Node = {
+      const newNode: FlowNode = {
         id: nanoid(),
-        title: `Page ${state.nodes.length + 2}`,
+        title: `Page ${state.nodes.length + 1}`,
         sections: [],
-        position: newPosition,
+        position: pos,
         parent: parentId,
       };
 
       state.nodes.push(newNode);
-
-      // Add edge from parent to new node
-      state.edges.push({
-        id: nanoid(),
-        source: parentId,
-        target: newNode.id,
-      });
-
-      // Update positions of existing children to maintain equal spacing
-      updateChildPositions(state, parentId);
+      state.edges.push({ id: nanoid(), source: parentId, target: newNode.id });
+      relayoutChildren(state.nodes, parentId);
     },
 
-    removeNode: (state, action: PayloadAction<string>) => {
-      const nodeId = action.payload;
-      const node = state.nodes.find((n) => n.id === nodeId);
-
+    removeNode(state, action: PayloadAction<string>) {
+      const id = action.payload;
+      const node = findNode(state.nodes, id);
       if (!node) return;
 
-      const parentId = node.parent;
+      const toDelete = new Set<string>();
+      const collect = (nid: string) => {
+        toDelete.add(nid);
+        childrenOf(state.nodes, nid).forEach((c) => collect(c.id));
+      };
+      collect(id);
 
-      // Remove the node
-      state.nodes = state.nodes.filter((n) => n.id !== nodeId);
-
-      // Remove edges to/from this node
+      state.nodes = state.nodes.filter((n) => !toDelete.has(n.id));
       state.edges = state.edges.filter(
-        (edge) => edge.source !== nodeId && edge.target !== nodeId
+        (e) => !toDelete.has(e.source) && !toDelete.has(e.target)
       );
 
-      // Update positions of remaining children
-      updateChildPositions(state, parentId);
+      if (node.parent) relayoutChildren(state.nodes, node.parent);
     },
 
-    updateNodePosition: (
-      state,
-      action: PayloadAction<{ id: string; x: number; y: number }>
-    ) => {
-      const node = state.nodes.find((n) => n.id === action.payload.id);
-      if (node) {
-        node.position = { x: action.payload.x, y: action.payload.y };
-        // Update positions of children when parent moves
-        updateChildPositions(state, node.id);
-      }
-    },
-
-    updateNodeTitle: (
+    updateNodeTitle(
       state,
       action: PayloadAction<{ id: string; title: string }>
-    ) => {
-      const node = state.nodes.find((n) => n.id === action.payload.id);
-      if (node) {
-        node.title = action.payload.title;
-      }
+    ) {
+      const node = findNode(state.nodes, action.payload.id);
+      if (node) node.title = action.payload.title;
     },
 
-    addSection: (
+    addSection(
       state,
-      action: PayloadAction<{
-        nodeId: string;
-        title: string;
-        content: string;
-      }>
-    ) => {
+      action: PayloadAction<{ nodeId: string; title: string; content: string }>
+    ) {
       const { nodeId, title, content } = action.payload;
-
-      if (nodeId === "root") {
-        const newSection: Section = {
-          id: nanoid(),
-          title,
-          content,
-        };
-        state.root.sections.push(newSection);
-        // Update child positions when root sections change
-        updateChildPositions(state, "root");
-      } else {
-        const node = state.nodes.find((n) => n.id === nodeId);
-        if (node) {
-          const newSection: Section = {
-            id: nanoid(),
-            title,
-            content,
-          };
-          node.sections.push(newSection);
-          // Update child positions when parent sections change
-          updateChildPositions(state, nodeId);
-        }
-      }
+      const node = findNode(state.nodes, nodeId);
+      if (!node) return;
+      node.sections.push({ id: nanoid(), title, content });
+      relayoutChildren(state.nodes, node.id);
     },
 
-    removeSection: (
+    removeSection(
       state,
       action: PayloadAction<{ nodeId: string; sectionId: string }>
-    ) => {
+    ) {
       const { nodeId, sectionId } = action.payload;
-
-      if (nodeId === "root") {
-        state.root.sections = state.root.sections.filter(
-          (section) => section.id !== sectionId
-        );
-        // Update child positions when root sections change
-        updateChildPositions(state, "root");
-      } else {
-        const node = state.nodes.find((n) => n.id === nodeId);
-        if (node) {
-          node.sections = node.sections.filter(
-            (section) => section.id !== sectionId
-          );
-          // Update child positions when parent sections change
-          updateChildPositions(state, nodeId);
-        }
-      }
+      const node = findNode(state.nodes, nodeId);
+      if (!node) return;
+      node.sections = node.sections.filter((s) => s.id !== sectionId);
+      relayoutChildren(state.nodes, node.id);
     },
 
-    updateSection: (
+    updateSection(
       state,
       action: PayloadAction<{
         nodeId: string;
@@ -226,81 +163,45 @@ const boardSlice = createSlice({
         title: string;
         content: string;
       }>
-    ) => {
+    ) {
       const { nodeId, sectionId, title, content } = action.payload;
-
-      if (nodeId === "root") {
-        const section = state.root.sections.find(
-          (section) => section.id === sectionId
-        );
-        if (section) {
-          section.title = title;
-          section.content = content;
-        }
-      } else {
-        const node = state.nodes.find((n) => n.id === nodeId);
-        if (node) {
-          const section = node.sections.find(
-            (section) => section.id === sectionId
-          );
-          if (section) {
-            section.title = title;
-            section.content = content;
-          }
-        }
+      const node = findNode(state.nodes, nodeId);
+      if (!node) return;
+      const sec = node.sections.find((s) => s.id === sectionId);
+      if (sec) {
+        sec.title = title;
+        sec.content = content;
       }
     },
 
-    reorderSections: (
+    reorderSections(
       state,
       action: PayloadAction<{
         nodeId: string;
         oldIndex: number;
         newIndex: number;
       }>
-    ) => {
+    ) {
       const { nodeId, oldIndex, newIndex } = action.payload;
-
-      if (nodeId === "root") {
-        const [removed] = state.root.sections.splice(oldIndex, 1);
-        state.root.sections.splice(newIndex, 0, removed);
-        // Update child positions when root sections change
-        updateChildPositions(state, "root");
-      } else {
-        const node = state.nodes.find((n) => n.id === nodeId);
-        if (node) {
-          const [removed] = node.sections.splice(oldIndex, 1);
-          node.sections.splice(newIndex, 0, removed);
-        }
-      }
-    },
-
-    updateRootTitle: (state, action: PayloadAction<string>) => {
-      state.root.title = action.payload;
-    },
-
-    updateRootPosition: (
-      state,
-      action: PayloadAction<{ x: number; y: number }>
-    ) => {
-      state.root.position = action.payload;
-      // Update positions of children when root moves
-      updateChildPositions(state, "root");
+      const node = findNode(state.nodes, nodeId);
+      if (!node) return;
+      const [removed] = node.sections.splice(oldIndex, 1);
+      node.sections.splice(newIndex, 0, removed);
+      relayoutChildren(state.nodes, node.id);
     },
   },
 });
 
 export const {
+  setProjectFromServer,
+  updateProjectTitle,
   addNode,
   removeNode,
-  updateNodePosition,
   updateNodeTitle,
   addSection,
   removeSection,
   updateSection,
   reorderSections,
-  updateRootTitle,
-  updateRootPosition,
 } = boardSlice.actions;
 
 export default boardSlice.reducer;

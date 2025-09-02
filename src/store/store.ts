@@ -4,21 +4,18 @@ import storage from "redux-persist/lib/storage";
 import boardReducer from "./boardSlice";
 
 const persistConfig = {
-  key: "canva-board",
+  key: "canva-board-v2",
   storage,
-
   serialize: true,
   deserialize: true,
   timeout: 0,
-  debug: true,
+  debug: false,
 };
 
 const persistedBoardReducer = persistReducer(persistConfig, boardReducer);
 
 export const store = configureStore({
-  reducer: {
-    board: persistedBoardReducer,
-  },
+  reducer: { board: persistedBoardReducer },
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({
       serializableCheck: {
@@ -34,11 +31,6 @@ export const store = configureStore({
     }),
 });
 
-store.subscribe(() => {
-  console.log("Store state changed:", store.getState());
-});
-
 export const persistor = persistStore(store);
-
 export type RootState = ReturnType<typeof store.getState>;
 export type AppDispatch = typeof store.dispatch;
